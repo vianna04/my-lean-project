@@ -1,0 +1,245 @@
+/-
+Copyright (c) 2024 Josha Dekker. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Josha Dekker, Etienne Marion
+-/
+module
+
+public import Mathlib.MeasureTheory.Integral.Bochner.Basic
+public import Mathlib.Probability.ProbabilityMassFunction.Basic
+public import Mathlib.Probability.Moments.Variance
+
+/-! # Poisson distributions over ℕ
+
+Define the Poisson measure over the natural numbers. For `r : ℝ≥0`, `poissonMeasure r` is the
+measure which to `{n}` associates `exp (-r) * r ^ n / (n)!`.
+
+## Main definition
+
+* `poissonMeasure r`: a Poisson measure on `ℕ`, parametrized by its rate `r : ℝ≥0`.
+-/
+
+@[expose] public section
+
+open MeasureTheory Real
+open scoped NNReal Nat
+
+namespace ProbabilityTheory
+
+/-- The poisson measure with rate `r : ℝ≥0` as a measure over `ℕ`. -/
+noncomputable
+def poissonMeasure (r : ℝ≥0) : Measure ℕ :=
+  Measure.sum (fun n ↦ ENNReal.ofReal (exp (-r) * r ^ n / (n)!) • (.dirac n))
+
+lemma poissonMeasure_singleton (r : ℝ≥0) (n : ℕ) :
+    (poissonMeasure r) {n} = ENNReal.ofReal (exp (-r) * r ^ n / (n)!) := by
+  rw [poissonMeasure, Measure.sum_smul_dirac_singleton]
+
+lemma poissonMeasure_real_singleton (r : ℝ≥0) (n : ℕ) :
+    (poissonMeasure r).real {n} = exp (-r) * r ^ n / (n)! := by
+  rw [measureReal_def, poissonMeasure_singleton, ENNReal.toReal_ofReal (by positivity)]
+
+lemma poissonMeasure_real_singleton_pos {r : ℝ≥0} (n : ℕ) (hr : 0 < r) :
+    0 < (poissonMeasure r).real {n} := by
+  rw [poissonMeasure_real_singleton]
+  positivity
+
+lemma hasSum_one_poissonMeasure (r : ℝ≥0) : HasSum (fun n ↦ exp (-r) * r ^ n / (n)!) 1 := by
+  convert (NormedSpace.expSeries_div_hasSum_exp (r : ℝ)).mul_left (exp (-r)) using 1
+  · simp_rw [mul_div_assoc]
+  · simp [← exp_eq_exp_ℝ, ← exp_add]
+
+instance isProbabilityMeasure_poissonMeasure (r : ℝ≥0) :
+    IsProbabilityMeasure (poissonMeasure r) :=
+  (hasSum_one_poissonMeasure r).isProbabilityMeasure_sum_dirac (fun _ ↦ by positivity)
+
+section Integral
+
+variable {E : Type*} [NormedAddCommGroup E]
+
+lemma integrable_poissonMeasure_iff {r : ℝ≥0} {f : ℕ → E} :
+    Integrable f (poissonMeasure r) ↔ Summable (fun n ↦ exp (-r) * r ^ n / (n)! * ‖f n‖) := by
+  rw [poissonMeasure, integrable_sum_dirac_iff (by simp)]
+  congrm Summable (fun n ↦ ?_ * _)
+  rw [ENNReal.toReal_ofReal (by positivity)]
+
+variable [NormedSpace ℝ E]
+
+lemma hasSum_integral_poissonMeasure [CompleteSpace E] {r : ℝ≥0} {f : ℕ → E}
+    (hf : Integrable f (poissonMeasure r)) :
+    HasSum (fun n ↦ (exp (-r) * r ^ n / (n)!) • f n) (∫ n, f n ∂poissonMeasure r) := by
+  have : (fun n ↦ (exp (-r) * r ^ n / (n)!) • f n) =
+      fun n ↦ (ENNReal.ofReal (exp (-r) * r ^ n / (n)!)).toReal • f n := by
+    ext; rw [ENNReal.toReal_ofReal (by positivity)]
+  rw [this]
+  apply hasSum_integral_sum_dirac (by simp)
+  convert integrable_poissonMeasure_iff.1 hf
+  rw [ENNReal.toReal_ofReal (by positivity)]
+/-- If a function is integrable with respect to `poissonMeasure r`, then its integral
+against this measure is given by its sum weighted by `exp (-r) * r ^ n / n!`.
+
+See `integral_poissonMeasure` for a version where the codomain is finite-dimensional
+and does not require the integrability hypothesis. -/
+lemma integral_poissonMeasure' [CompleteSpace E] {r : ℝ≥0} {f : ℕ → E}
+    (hf : Integrable f (poissonMeasure r)) :
+    ∫ n, f n ∂poissonMeasure r = ∑' n, (exp (-r) * r ^ n / (n)!) • f n :=
+  (hasSum_integral_poissonMeasure hf).tsum_eq.symm
+
+/-- The integral of a function taking values in a finite-dimensional space
+against `poissonMeasure r` is given by its sum weighted by `exp (-r) * r ^ n / n!`. This version
+does not require integrability, as the integral exists if and only if the sum exists, and otherwise
+they are both defined to be zero.
+
+See `integral_poissonMeasure'` with a general codomain which assumes integrability. -/
+lemma integral_poissonMeasure [FiniteDimensional ℝ E] (r : ℝ≥0) (f : ℕ → E) :
+    ∫ n, f n ∂poissonMeasure r = ∑' n, (exp (-r) * r ^ n / (n)!) • f n := by
+  rw [poissonMeasure, integral_sum_dirac (by simp)]
+  congr with n
+  rw [ENNReal.toReal_ofReal (by positivity)]
+
+end Integral
+
+section PoissonPMF
+
+/-- The pmf of the Poisson distribution depending on its rate, as a function to ℝ -/
+@[deprecated poissonMeasure (since := "2026-03-08")]
+noncomputable
+def poissonPMFReal (r : ℝ≥0) (n : ℕ) : ℝ := exp (-r) * r ^ n / (n)!
+
+@[deprecated (since := "2026-03-08")]
+alias poissonPMFRealSum := hasSum_one_poissonMeasure
+
+set_option linter.deprecated false in
+@[deprecated poissonMeasure_real_singleton_pos (since := "2026-03-08")]
+lemma poissonPMFReal_pos {r : ℝ≥0} {n : ℕ} (hr : 0 < r) : 0 < poissonPMFReal r n := by
+  rw [poissonPMFReal]
+  positivity
+
+set_option linter.deprecated false in
+@[deprecated measureReal_nonneg (since := "2026-03-08")]
+lemma poissonPMFReal_nonneg {r : ℝ≥0} {n : ℕ} : 0 ≤ poissonPMFReal r n := by
+  unfold poissonPMFReal
+  positivity
+
+set_option linter.deprecated false in
+/-- The pmf of the Poisson distribution depending on its rate, as a PMF. -/
+@[deprecated poissonMeasure (since := "2026-03-08")]
+noncomputable
+def poissonPMF (r : ℝ≥0) : PMF ℕ := by
+  refine ⟨fun n ↦ ENNReal.ofReal (poissonPMFReal r n), ?_⟩
+  apply ENNReal.hasSum_coe.mpr
+  rw [← toNNReal_one]
+  exact (poissonPMFRealSum r).toNNReal (fun n ↦ poissonPMFReal_nonneg)
+
+set_option linter.deprecated false in
+@[deprecated poissonMeasure (since := "2026-03-08")]
+lemma poissonPMFReal_ofReal_eq_poissonPMF (r : ℝ≥0) (n : ℕ) :
+    ENNReal.ofReal (poissonPMFReal r n) = poissonPMF r n := by
+  simpa only [poissonPMF] using by rfl
+
+set_option linter.deprecated false in
+@[deprecated Measurable.of_discrete (since := "2026-03-08")]
+lemma measurable_poissonPMFReal (r : ℝ≥0) : Measurable (poissonPMFReal r) := by fun_prop
+
+set_option linter.deprecated false in
+@[deprecated StronglyMeasurable.of_discrete (since := "2026-03-08")]
+lemma stronglyMeasurable_poissonPMFReal (r : ℝ≥0) : StronglyMeasurable (poissonPMFReal r) :=
+  stronglyMeasurable_iff_measurable.mpr (measurable_poissonPMFReal r)
+
+end PoissonPMF
+
+section Moments
+
+/-- The weighted sum for the mean of the Poisson distribution. -/
+lemma hasSum_poissonMeasure_nat (r : ℝ≥0) :
+    HasSum (fun a : ℕ => rexp (-(r:ℝ)) * (r:ℝ) ^ a / (a !) * (a : ℝ)) (r : ℝ) := by
+  have h := (hasSum_one_poissonMeasure r).mul_left (r : ℝ)
+  simp_rw [mul_one] at h
+  set f := fun a : ℕ => rexp (-(r:ℝ)) * (r:ℝ) ^ a / (a !) * (a : ℝ)
+  have hshift : HasSum (fun n : ℕ => f (n + 1)) (r : ℝ) := by
+    refine h.congr_fun fun n => ?_
+    simp only [f, Nat.factorial_succ, Nat.cast_mul, pow_succ]
+    push_cast; field_simp
+  simp only [hasSum_nat_add_iff, Finset.sum_range_one, show f 0 = 0 by simp [f], add_zero] at hshift
+  exact hshift
+
+/-- The weighted sum for the descending factorial moment of order 2. -/
+lemma hasSum_poissonMeasure_descFactorial_two (r : ℝ≥0) :
+    HasSum (fun a : ℕ => rexp (-(r:ℝ)) * (r:ℝ) ^ a / a ! * ((a : ℝ) * ((a : ℝ) - 1))) (r ^ 2) := by
+  set f := fun a : ℕ => rexp (-(r:ℝ)) * (r:ℝ) ^ a / a ! * ((a : ℝ) * ((a : ℝ) - 1))
+  have hshift : HasSum (fun n : ℕ => f (n + 2)) ((r : ℝ) ^ 2) := by
+    have h := (hasSum_one_poissonMeasure r).mul_left ((r : ℝ) ^ 2)
+    simp_rw [mul_one] at h
+    refine h.congr_fun fun n => ?_
+    simp only [f, Nat.factorial_succ, Nat.cast_mul, pow_succ]
+    push_cast; field_simp; ring
+  simp only [hasSum_nat_add_iff, Finset.sum_range_succ, Finset.sum_range_zero, add_zero,
+             show f 0 = 0 by simp [f], show f 1 = 0 by simp [f]] at hshift
+  exact hshift
+
+/-- The weighted sum for the second moment of the Poisson distribution. -/
+lemma hasSum_poissonMeasure_sq (r : ℝ≥0) :
+    HasSum (fun n : ℕ ↦ rexp (-(r : ℝ)) * (r : ℝ) ^ n / (n)! * (n : ℝ) ^ 2)
+    ((r : ℝ) ^ 2 + (r : ℝ)) := by
+  have h1 := hasSum_poissonMeasure_nat r
+  have h2 := hasSum_poissonMeasure_descFactorial_two r
+  convert h2.add h1 using 1
+  ext n; ring
+
+lemma lintegral_sq_nat_poissonMeasure (r : ℝ≥0) :
+    ∫⁻ n, ‖(n : ℝ)‖ₑ ^ 2 ∂poissonMeasure r = ENNReal.ofReal ((r : ℝ) ^ 2 + (r : ℝ)) := by
+  have hint : Integrable (fun n : ℕ ↦ (n : ℝ) ^ 2) (poissonMeasure r) := by
+    rw [integrable_poissonMeasure_iff]
+    have heq : (fun n : ℕ ↦ rexp (-↑r) * ↑r ^ n / (n !) * ‖(n : ℝ) ^ 2‖) =
+        (fun n : ℕ ↦ rexp (-↑r) * ↑r ^ n / (n !) * (n : ℝ) ^ 2) := by
+      ext n
+      congr 1
+      rw [Real.norm_eq_abs, abs_of_nonneg (sq_nonneg _)]
+    rw [heq]
+    exact (hasSum_poissonMeasure_sq r).summable
+  have h : ∀ n : ℕ, ‖(n : ℝ)‖ₑ ^ 2 = ENNReal.ofReal ((n : ℝ) ^ 2) := fun n ↦ by
+    rw [← enorm_pow, Real.enorm_of_nonneg (sq_nonneg _)]
+  simp_rw [h]
+  rw [← ofReal_integral_eq_lintegral_ofReal hint (ae_of_all _ (fun _ ↦ sq_nonneg _))]
+  congr 1
+  rw [integral_poissonMeasure]
+  simp only [smul_eq_mul]
+  exact (hasSum_poissonMeasure_sq r).tsum_eq
+
+lemma memLp_two_nat_poissonMeasure (r : ℝ≥0) :
+    MemLp (fun n : ℕ ↦ (n : ℝ)) 2 (poissonMeasure r) := by
+  refine ⟨by fun_prop, ?_⟩
+  rw [eLpNorm_eq_lintegral_rpow_enorm_toReal two_ne_zero ENNReal.ofNat_ne_top]
+  simp only [ENNReal.toReal_ofNat, one_div, ENNReal.rpow_two]
+  rw [lintegral_sq_nat_poissonMeasure]
+  exact ENNReal.rpow_lt_top_of_nonneg (by norm_num) ENNReal.ofReal_ne_top
+
+end Moments
+
+section MeanVariance
+
+@[simp]
+theorem poissonMeasure_mean (r : ℝ≥0) :
+    ∫ n : ℕ, (n : ℝ) ∂poissonMeasure r = r := by
+  rw [integral_poissonMeasure]
+  simp only [smul_eq_mul]
+  exact (hasSum_poissonMeasure_nat r).tsum_eq
+
+@[simp]
+theorem poissonMeasure_moment_two (r : ℝ≥0) :
+    ∫ n : ℕ, (n : ℝ) ^ 2 ∂poissonMeasure r = (r : ℝ) ^ 2 + (r : ℝ) := by
+  rw [integral_poissonMeasure]
+  simp only [smul_eq_mul]
+  exact (hasSum_poissonMeasure_sq r).tsum_eq
+
+@[simp]
+theorem poissonMeasure_variance (r : ℝ≥0) :
+    Var[fun n : ℕ ↦ (n : ℝ); poissonMeasure r] = r := by
+  rw [variance_eq_sub (memLp_two_nat_poissonMeasure r)]
+  simp only [Pi.pow_apply]
+  rw [poissonMeasure_moment_two, poissonMeasure_mean]
+  ring
+
+end MeanVariance
+
+end ProbabilityTheory

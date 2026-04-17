@@ -1,1 +1,2 @@
 import MyLeanProject.GammaDistribution
+import MyLeanProject.PoissonDistribution
