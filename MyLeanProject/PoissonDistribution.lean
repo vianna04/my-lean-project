@@ -9,6 +9,9 @@ public import Mathlib.MeasureTheory.Integral.Bochner.Basic
 public import Mathlib.Probability.ProbabilityMassFunction.Basic
 public import Mathlib.Probability.Moments.Variance
 
+import Mathlib.Analysis.SpecialFunctions.Exponential
+import Mathlib.MeasureTheory.Integral.Bochner.SumMeasure
+
 /-! # Poisson distributions over ℕ
 
 Define the Poisson measure over the natural numbers. For `r : ℝ≥0`, `poissonMeasure r` is the
@@ -45,7 +48,7 @@ lemma poissonMeasure_real_singleton_pos {r : ℝ≥0} (n : ℕ) (hr : 0 < r) :
   positivity
 
 lemma hasSum_one_poissonMeasure (r : ℝ≥0) : HasSum (fun n ↦ exp (-r) * r ^ n / (n)!) 1 := by
-  convert (NormedSpace.expSeries_div_hasSum_exp (r : ℝ)).mul_left (exp (-r)) using 1
+  convert (NormedSpace.expSeries_div_hasSum_exp (r : ℝ)).mul_left (exp (-r)) using 2
   · simp_rw [mul_div_assoc]
   · simp [← exp_eq_exp_ℝ, ← exp_add]
 
