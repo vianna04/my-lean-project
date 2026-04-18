@@ -1,2 +1,4 @@
 import MyLeanProject.GammaDistribution
 import MyLeanProject.PoissonDistribution
+import MyLeanProject.BetaDistribution
+import MyLeanProject.GeometricDistribution
