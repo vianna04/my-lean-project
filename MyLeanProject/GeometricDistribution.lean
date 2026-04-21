@@ -104,6 +104,8 @@ theorem geometricMeasure_mean (hp_pos : 0 < p) (hp_lt_one : p < 1) :
     ∫ n : ℕ, (n : ℝ) ∂geometricMeasure hp_pos (le_of_lt hp_lt_one) = (1 - p) / p := by
   have hp_le_one := le_of_lt hp_lt_one
   have key := hasSum_geometric_mul_nat hp_pos hp_lt_one
+  have hnn : ∀ a, 0 ≤ geometricPMFReal p a * (a : ℝ) :=
+    fun a => mul_nonneg (geometricPMFReal_nonneg hp_pos hp_le_one) (Nat.cast_nonneg a)
   have hint : Integrable (Nat.cast : ℕ → ℝ) (geometricPMF hp_pos hp_le_one).toMeasure := by
     refine ⟨by fun_prop, ?_⟩
     rw [hasFiniteIntegral_iff_enorm, lintegral_countable']
@@ -114,60 +116,37 @@ theorem geometricMeasure_mean (hp_pos : 0 < p) (hp_lt_one : p < 1) :
                 ENNReal.ofReal (geometricPMFReal p a) from rfl,
               show (a : ℝ≥0∞) = ENNReal.ofReal (a : ℝ) from (ENNReal.ofReal_natCast a).symm,
               ← ENNReal.ofReal_mul (Nat.cast_nonneg a), mul_comm]
-      _ < ∞ := by
-          rw [(ENNReal.ofReal_tsum_of_nonneg (fun a => mul_nonneg
-              (geometricPMFReal_nonneg hp_pos hp_le_one) (Nat.cast_nonneg a)) key.summable).symm,
-              key.tsum_eq]
-          exact ENNReal.ofReal_lt_top
+      _ = ENNReal.ofReal (∑' a, geometricPMFReal p a * a) :=
+          (ENNReal.ofReal_tsum_of_nonneg hnn key.summable).symm
+      _ < ∞ := by rw [key.tsum_eq]; exact ENNReal.ofReal_lt_top
   rw [geometricMeasure, PMF.integral_eq_tsum _ _ hint]
-  simp_rw [show ∀ a, ((geometricPMF hp_pos hp_le_one) a).toReal = geometricPMFReal p a from
-    fun a => ENNReal.toReal_ofReal (geometricPMFReal_nonneg hp_pos hp_le_one), smul_eq_mul]
-  exact key.tsum_eq
+  simp_rw [fun a => show ((geometricPMF hp_pos hp_le_one) a).toReal = geometricPMFReal p a from
+    ENNReal.toReal_ofReal (geometricPMFReal_nonneg hp_pos hp_le_one), smul_eq_mul, key.tsum_eq]
 
 lemma hasSum_geometric_factorial_moment2 (hp_pos : 0 < p) (hp_lt_one : p < 1) :
     HasSum (fun n : ℕ => geometricPMFReal p n * (n * (n - 1 : ℝ))) (2 * (1 - p) ^ 2 / p ^ 2) := by
   set q := 1 - p with hq
-  have hq_pos : 0 < q := sub_pos.mpr hp_lt_one
-  have hq_lt_one : q < 1 := sub_lt_self 1 hp_pos
-  have hq_norm : ‖q‖ < 1 := by rwa [Real.norm_of_nonneg (le_of_lt hq_pos)]
+  have hq_norm : ‖q‖ < 1 := by
+    rw [Real.norm_of_nonneg (sub_nonneg.mpr hp_lt_one.le)]; exact sub_lt_self 1 hp_pos
   set f := fun n : ℕ => geometricPMFReal p n * (n * (n - 1 : ℝ))
-  have hf0 : f 0 = 0 := by simp [f, geometricPMFReal]
-  have hf1 : f 1 = 0 := by simp [f, geometricPMFReal]
-  have hshift : HasSum (fun n : ℕ => f (n + 2)) (2 * (1 - p) ^ 2 / p ^ 2) := by
-    have hchoose := hasSum_choose_mul_geometric_of_norm_lt_one 2 hq_norm
-    simp only [hq, sub_sub_cancel, pow_succ, pow_zero, one_mul, one_div] at hchoose
-    have hconv : HasSum (fun n : ℕ => ((n + 2) * (n + 1) : ℝ) * q ^ n) (2 / p ^ 3) := by
-      have h2 := hchoose.mul_left 2
-      have hval : 2 * (p * p * p)⁻¹ = 2 / p ^ 3 := by field_simp
-      rw [hval] at h2
-      convert h2 using 1
-      ext n
-      have hchoose_eq : ((n + 2).choose 2 : ℝ) = (n + 2) * (n + 1) / 2 := by
-        have h1 : (n + 2).choose 2 = (n + 2) * (n + 1) / 2 := by
-          rw [Nat.choose_two_right]
-          congr 1
-        rw [h1]
-        have hdvd : 2 ∣ (n + 2) * (n + 1) := by
-          have : (n + 2) * (n + 1) = (n + 1) * (n + 2) := mul_comm _ _
-          rw [this]
-          exact Nat.two_dvd_mul_add_one (n + 1)
-        rw [Nat.cast_div hdvd (by norm_num)]
-        push_cast
-        rfl
-      rw [hchoose_eq, hq]
-      ring
-    have hmul := hconv.mul_left (q ^ 2 * p)
-    have hval2 : q ^ 2 * p * (2 / p ^ 3) = 2 * (1 - p) ^ 2 / p ^ 2 := by
-      simp only [hq]
-      field_simp
-    rw [hval2] at hmul
-    convert hmul using 1
-    ext n
-    simp only [f, geometricPMFReal, hq]
-    push_cast
-    ring
-  rwa [hasSum_nat_add_iff, Finset.sum_range_succ, Finset.sum_range_succ,
-       Finset.sum_range_zero, hf0, hf1, add_zero, zero_add, add_zero] at hshift
+  suffices HasSum (fun n : ℕ => f (n + 2)) (2 * (1 - p) ^ 2 / p ^ 2) by
+    rwa [hasSum_nat_add_iff, Finset.sum_range_succ, Finset.sum_range_succ,
+         Finset.sum_range_zero, show f 0 = 0 from by simp [f, geometricPMFReal],
+         show f 1 = 0 from by simp [f, geometricPMFReal],
+         add_zero, zero_add, add_zero] at this
+  have hchoose := hasSum_choose_mul_geometric_of_norm_lt_one 2 hq_norm
+  simp only [hq, sub_sub_cancel, pow_succ, pow_zero, one_mul, one_div] at hchoose
+  have hconv : HasSum (fun n : ℕ => ((n + 2) * (n + 1) : ℝ) * q ^ n) (2 / p ^ 3) := by
+    have h2 := hchoose.mul_left 2
+    rw [show 2 * (p * p * p)⁻¹ = 2 / p ^ 3 from by field_simp] at h2
+    convert h2 using 1; ext n
+    have h1 : (n + 2).choose 2 = (n + 2) * (n + 1) / 2 := by
+      rw [Nat.choose_two_right]; congr 1
+    have hdvd : 2 ∣ (n + 2) * (n + 1) := by rw [mul_comm]; exact Nat.two_dvd_mul_add_one (n + 1)
+    rw [h1, Nat.cast_div hdvd (by norm_num), hq]; push_cast; ring
+  convert (hconv.mul_left (q ^ 2 * p)) using 1
+  · ext n; simp only [f, geometricPMFReal, hq]; push_cast; ring
+  · simp only [hq]; field_simp
 
 /-- The variance of the geometric distribution with p ∈ (0,1) is (1-p)/p^2 -/
 theorem geometricMeasure_variance (hp_pos : 0 < p) (hp_lt_one : p < 1) :
@@ -177,63 +156,43 @@ theorem geometricMeasure_variance (hp_pos : 0 < p) (hp_lt_one : p < 1) :
   have hpdf : ∀ a : ℕ, ((geometricPMF hp_pos hp_le_one) a).toReal = geometricPMFReal p a :=
     fun a => ENNReal.toReal_ofReal (geometricPMFReal_nonneg hp_pos hp_le_one)
   set μ := (1 - p) / p with hμ
+  have hnn : ∀ a : ℕ, 0 ≤ geometricPMFReal p a * ((a : ℝ) - μ) ^ 2 :=
+    fun a => mul_nonneg (geometricPMFReal_nonneg hp_pos hp_le_one) (sq_nonneg _)
   have key : HasSum (fun a : ℕ => geometricPMFReal p a * ((a : ℝ) - μ) ^ 2)
       ((1 - p) / p ^ 2) := by
     have h1 := geometricPMFRealSum hp_pos hp_le_one
-    have h2 : HasSum (fun a : ℕ => geometricPMFReal p a * (a : ℝ)) μ :=
-      hasSum_geometric_mul_nat hp_pos hp_lt_one
-    have hA := hasSum_geometric_factorial_moment2 hp_pos hp_lt_one
+    have h2 := hasSum_geometric_mul_nat hp_pos hp_lt_one
     have hA' : HasSum (fun a : ℕ => geometricPMFReal p a * (a : ℝ) ^ 2)
         (2 * (1 - p) ^ 2 / p ^ 2 + (1 - p) / p) :=
-      (hA.add h2).congr_fun (fun a => by ring)
+      ((hasSum_geometric_factorial_moment2 hp_pos hp_lt_one).add h2).congr_fun (fun a => by ring)
     have hB : HasSum (fun a : ℕ => geometricPMFReal p a * (2 * (a : ℝ) * μ))
         (2 * μ * μ) := by
-      have h := h2.mul_right (2 * μ)
-      simp_rw [mul_comm _ (2 * μ), ← mul_assoc] at h
-      convert h using 1
-      funext a; ring
+      convert h2.mul_right (2 * μ) using 1 <;> [ext a; skip] <;> ring
     have hC : HasSum (fun a : ℕ => geometricPMFReal p a * μ ^ 2) (μ ^ 2) := by
-      have h := h1.mul_right (μ ^ 2)
-      convert h using 1; ring
+      convert h1.mul_right (μ ^ 2) using 1; ring
     have hcomb := (hA'.sub hB).add hC
-    have hsimp : 2 * (1 - p) ^ 2 / p ^ 2 + (1 - p) / p - 2 * μ * μ + μ ^ 2 =
-        (1 - p) / p ^ 2 := by
-      simp only [hμ]; field_simp; ring
-    rw [hsimp] at hcomb
+    rw [show 2 * (1 - p) ^ 2 / p ^ 2 + (1 - p) / p - 2 * μ * μ + μ ^ 2 =
+        (1 - p) / p ^ 2 from by simp only [hμ]; field_simp; ring] at hcomb
     exact hcomb.congr_fun (fun a => by ring)
   have hint : Integrable (fun n : ℕ => ((n : ℝ) - μ) ^ 2)
       (geometricPMF hp_pos hp_le_one).toMeasure := by
-    constructor
-    · fun_prop
-    · rw [hasFiniteIntegral_iff_enorm, lintegral_countable']
-      simp_rw [PMF.toMeasure_apply_singleton _ _ (measurableSet_singleton _),
-        enorm_eq_nnnorm]
-      have hnn : ∀ a : ℕ, 0 ≤ geometricPMFReal p a * ((a : ℝ) - μ) ^ 2 :=
-        fun a => mul_nonneg (geometricPMFReal_nonneg hp_pos hp_le_one) (sq_nonneg _)
-      have hbound : ∀ a : ℕ,
-          (‖((a : ℝ) - μ) ^ 2‖₊ : ℝ≥0∞) * (geometricPMF hp_pos hp_le_one) a =
-          ENNReal.ofReal (geometricPMFReal p a * ((a : ℝ) - μ) ^ 2) := fun a => by
-        rw [show (geometricPMF hp_pos hp_le_one) a =
-              ENNReal.ofReal (geometricPMFReal p a) from rfl,
-            Real.nnnorm_of_nonneg (sq_nonneg _),
-            ENNReal.ofReal_eq_coe_nnreal (geometricPMFReal_nonneg hp_pos hp_le_one),
-            ENNReal.ofReal_eq_coe_nnreal (hnn a),
-            ← ENNReal.coe_mul]
-        congr 1
-        ext
-        simp [mul_comm]
-      calc ∑' a, ↑‖((a : ℝ) - μ) ^ 2‖₊ * (geometricPMF hp_pos hp_le_one) a
-          = ∑' a, ENNReal.ofReal (geometricPMFReal p a * ((a : ℝ) - μ) ^ 2) :=
-            tsum_congr hbound
-        _ = ENNReal.ofReal (∑' a, geometricPMFReal p a * ((a : ℝ) - μ) ^ 2) :=
-            (ENNReal.ofReal_tsum_of_nonneg hnn key.summable).symm
-        _ = ENNReal.ofReal ((1 - p) / p ^ 2) := by rw [key.tsum_eq]
-        _ < ∞ := ENNReal.ofReal_lt_top
+    refine ⟨by fun_prop, ?_⟩
+    rw [hasFiniteIntegral_iff_enorm, lintegral_countable']
+    simp_rw [PMF.toMeasure_apply_singleton _ _ (measurableSet_singleton _), enorm_eq_nnnorm]
+    calc ∑' a, ↑‖((a : ℝ) - μ) ^ 2‖₊ * (geometricPMF hp_pos hp_le_one) a
+        = ∑' a, ENNReal.ofReal (geometricPMFReal p a * ((a : ℝ) - μ) ^ 2) :=
+          tsum_congr fun a => by
+            rw [show (geometricPMF hp_pos hp_le_one) a =
+                  ENNReal.ofReal (geometricPMFReal p a) from rfl,
+                Real.nnnorm_of_nonneg (sq_nonneg _),
+                ENNReal.ofReal_eq_coe_nnreal (geometricPMFReal_nonneg hp_pos hp_le_one),
+                ENNReal.ofReal_eq_coe_nnreal (hnn a), ← ENNReal.coe_mul]
+            congr 1; ext; simp [mul_comm]
+      _ = ENNReal.ofReal (∑' a, geometricPMFReal p a * ((a : ℝ) - μ) ^ 2) :=
+          (ENNReal.ofReal_tsum_of_nonneg hnn key.summable).symm
+      _ < ∞ := by rw [key.tsum_eq]; exact ENNReal.ofReal_lt_top
   rw [geometricMeasure, PMF.integral_eq_tsum _ _ hint]
-  simp_rw [hpdf, smul_eq_mul]
-  rw [tsum_congr]
-  · exact key.tsum_eq
-  · intro a; ring
+  simp_rw [hpdf, smul_eq_mul, key.tsum_eq]
 
 end MeanVariance
 
