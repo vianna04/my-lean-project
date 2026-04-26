@@ -10,6 +10,8 @@ public import Mathlib.MeasureTheory.Function.StronglyMeasurable.Basic
 public import Mathlib.Probability.ProbabilityMassFunction.Integrals
 public import Mathlib.Analysis.SpecificLimits.Normed
 
+public import Mathlib.Probability.Moments.Variance
+
 /-! # Geometric distributions over ℕ
 
 Define the geometric measure over the natural numbers
@@ -91,7 +93,50 @@ lemma isProbabilityMeasure_geometricMeasure (hp_pos : 0 < p) (hp_le_one : p ≤ 
 @[deprecated (since := "2025-08-28")] alias isProbabilityMeasureGeometric :=
   isProbabilityMeasure_geometricMeasure
 
-section MeanVariance
+/-- The geometric measure with success probability `p` as a measure over `ℕ`. -/
+noncomputable
+def geometricMeasure' (p : ℝ) (_hp_pos : 0 < p) (_hp_le_one : p ≤ 1) : Measure ℕ :=
+  Measure.sum (fun n ↦ ENNReal.ofReal (geometricPMFReal p n) • (.dirac n))
+
+lemma geometricMeasure'_singleton (hp_pos : 0 < p) (hp_le_one : p ≤ 1) (n : ℕ) :
+    (geometricMeasure' p hp_pos hp_le_one) {n} =
+    ENNReal.ofReal (geometricPMFReal p n) := by
+  rw [geometricMeasure', Measure.sum_smul_dirac_singleton]
+
+lemma geometricMeasure'_real_singleton (hp_pos : 0 < p) (hp_le_one : p ≤ 1) (n : ℕ) :
+    (geometricMeasure' p hp_pos hp_le_one).real {n} = geometricPMFReal p n := by
+  rw [measureReal_def, geometricMeasure'_singleton, ENNReal.toReal_ofReal
+    (geometricPMFReal_nonneg hp_pos hp_le_one)]
+
+instance isProbabilityMeasure_geometricMeasure' (hp_pos : 0 < p) (hp_le_one : p ≤ 1) :
+    IsProbabilityMeasure (geometricMeasure' p hp_pos hp_le_one) :=
+  (geometricPMFRealSum hp_pos hp_le_one).isProbabilityMeasure_sum_dirac
+    (fun _ ↦ geometricPMFReal_nonneg hp_pos hp_le_one)
+
+section Integral
+
+variable {E : Type*} [NormedAddCommGroup E]
+
+lemma integrable_geometricMeasure'_iff {hp_pos : 0 < p} {hp_le_one : p ≤ 1} {f : ℕ → E} :
+    Integrable f (geometricMeasure' p hp_pos hp_le_one) ↔
+    Summable (fun n ↦ geometricPMFReal p n * ‖f n‖) := by
+  rw [geometricMeasure', integrable_sum_dirac_iff (by simp)]
+  congrm Summable (fun n ↦ ?_ * _)
+  rw [ENNReal.toReal_ofReal (geometricPMFReal_nonneg hp_pos hp_le_one)]
+
+variable [NormedSpace ℝ E]
+
+lemma integral_geometricMeasure' [FiniteDimensional ℝ E] (hp_pos : 0 < p) (hp_le_one : p ≤ 1)
+    (f : ℕ → E) :
+    ∫ n, f n ∂geometricMeasure' p hp_pos hp_le_one =
+    ∑' n, geometricPMFReal p n • f n := by
+  rw [geometricMeasure', integral_sum_dirac (by simp)]
+  congr with n
+  rw [ENNReal.toReal_ofReal (geometricPMFReal_nonneg hp_pos hp_le_one)]
+
+end Integral
+
+section Moments
 
 lemma hasSum_geometric_mul_nat (hp_pos : 0 < p) (hp_lt_one : p < 1) :
     HasSum (fun n : ℕ => geometricPMFReal p n * n) ((1 - p) / p) := by
@@ -99,29 +144,6 @@ lemma hasSum_geometric_mul_nat (hp_pos : 0 < p) (hp_lt_one : p < 1) :
     rw [Real.norm_of_nonneg (sub_nonneg.mpr hp_lt_one.le)]; linarith : ‖1 - p‖ < 1)).mul_right p
   simp only [sub_sub_cancel, geometricPMFReal] at this ⊢
   convert this using 1 <;> first | (ext; ring) | field_simp
-
-theorem geometricMeasure_mean (hp_pos : 0 < p) (hp_lt_one : p < 1) :
-    ∫ n : ℕ, (n : ℝ) ∂geometricMeasure hp_pos (le_of_lt hp_lt_one) = (1 - p) / p := by
-  have hp_le_one := le_of_lt hp_lt_one
-  have key := hasSum_geometric_mul_nat hp_pos hp_lt_one
-  have hnn : ∀ a, 0 ≤ geometricPMFReal p a * (a : ℝ) :=
-    fun a => mul_nonneg (geometricPMFReal_nonneg hp_pos hp_le_one) (Nat.cast_nonneg a)
-  have hint : Integrable (Nat.cast : ℕ → ℝ) (geometricPMF hp_pos hp_le_one).toMeasure := by
-    refine ⟨by fun_prop, ?_⟩
-    rw [hasFiniteIntegral_iff_enorm, lintegral_countable']
-    simp_rw [PMF.toMeasure_apply_singleton _ _ (measurableSet_singleton _), enorm_natCast]
-    calc ∑' a, ↑a * (geometricPMF hp_pos hp_le_one) a
-        ≤ ∑' a, ENNReal.ofReal (geometricPMFReal p a * a) := ENNReal.tsum_le_tsum fun a => by
-          rw [show (geometricPMF hp_pos hp_le_one) a =
-                ENNReal.ofReal (geometricPMFReal p a) from rfl,
-              show (a : ℝ≥0∞) = ENNReal.ofReal (a : ℝ) from (ENNReal.ofReal_natCast a).symm,
-              ← ENNReal.ofReal_mul (Nat.cast_nonneg a), mul_comm]
-      _ = ENNReal.ofReal (∑' a, geometricPMFReal p a * a) :=
-          (ENNReal.ofReal_tsum_of_nonneg hnn key.summable).symm
-      _ < ∞ := by rw [key.tsum_eq]; exact ENNReal.ofReal_lt_top
-  rw [geometricMeasure, PMF.integral_eq_tsum _ _ hint]
-  simp_rw [fun a => show ((geometricPMF hp_pos hp_le_one) a).toReal = geometricPMFReal p a from
-    ENNReal.toReal_ofReal (geometricPMFReal_nonneg hp_pos hp_le_one), smul_eq_mul, key.tsum_eq]
 
 lemma hasSum_geometric_factorial_moment2 (hp_pos : 0 < p) (hp_lt_one : p < 1) :
     HasSum (fun n : ℕ => geometricPMFReal p n * (n * (n - 1 : ℝ))) (2 * (1 - p) ^ 2 / p ^ 2) := by
@@ -148,51 +170,75 @@ lemma hasSum_geometric_factorial_moment2 (hp_pos : 0 < p) (hp_lt_one : p < 1) :
   · ext n; simp only [f, geometricPMFReal, hq]; push_cast; ring
   · simp only [hq]; field_simp
 
-/-- The variance of the geometric distribution with p ∈ (0,1) is (1-p)/p^2 -/
-theorem geometricMeasure_variance (hp_pos : 0 < p) (hp_lt_one : p < 1) :
-    ∫ n : ℕ, ((n : ℝ) - (1 - p) / p) ^ 2 ∂geometricMeasure hp_pos (le_of_lt hp_lt_one) =
+lemma hasSum_geometricMeasure'_nat (hp_pos : 0 < p) (hp_lt_one : p < 1) :
+    HasSum (fun n : ℕ => geometricPMFReal p n * (n : ℝ)) ((1 - p) / p) :=
+  hasSum_geometric_mul_nat hp_pos hp_lt_one
+
+lemma hasSum_geometricMeasure'_sq (hp_pos : 0 < p) (hp_lt_one : p < 1) :
+    HasSum (fun n : ℕ => geometricPMFReal p n * (n : ℝ) ^ 2)
+    (2 * (1 - p) ^ 2 / p ^ 2 + (1 - p) / p) := by
+  have h1 := hasSum_geometric_mul_nat hp_pos hp_lt_one
+  have h2 := hasSum_geometric_factorial_moment2 hp_pos hp_lt_one
+  convert h2.add h1 using 1
+  ext n; ring
+
+lemma lintegral_sq_nat_geometricMeasure' (hp_pos : 0 < p) (hp_lt_one : p < 1) :
+    ∫⁻ n, ‖(n : ℝ)‖ₑ ^ 2 ∂geometricMeasure' p hp_pos hp_lt_one.le =
+    ENNReal.ofReal (2 * (1 - p) ^ 2 / p ^ 2 + (1 - p) / p) := by
+  have hint : Integrable (fun n : ℕ ↦ (n : ℝ) ^ 2) (geometricMeasure' p hp_pos hp_lt_one.le) := by
+    rw [integrable_geometricMeasure'_iff]
+    have heq : (fun n : ℕ ↦ geometricPMFReal p n * ‖(n : ℝ) ^ 2‖) =
+        (fun n : ℕ ↦ geometricPMFReal p n * (n : ℝ) ^ 2) := by
+      ext n
+      congr 1
+      rw [Real.norm_eq_abs, abs_of_nonneg (sq_nonneg _)]
+    rw [heq]
+    exact (hasSum_geometricMeasure'_sq hp_pos hp_lt_one).summable
+  have h : ∀ n : ℕ, ‖(n : ℝ)‖ₑ ^ 2 = ENNReal.ofReal ((n : ℝ) ^ 2) := fun n ↦ by
+    rw [← enorm_pow, Real.enorm_of_nonneg (sq_nonneg _)]
+  simp_rw [h]
+  rw [← ofReal_integral_eq_lintegral_ofReal hint (ae_of_all _ (fun _ ↦ sq_nonneg _))]
+  congr 1
+  rw [integral_geometricMeasure']
+  simp only [smul_eq_mul]
+  exact (hasSum_geometricMeasure'_sq hp_pos hp_lt_one).tsum_eq
+
+lemma memLp_two_nat_geometricMeasure' (hp_pos : 0 < p) (hp_lt_one : p < 1) :
+    MemLp (fun n : ℕ ↦ (n : ℝ)) 2 (geometricMeasure' p hp_pos hp_lt_one.le) := by
+  refine ⟨by fun_prop, ?_⟩
+  rw [eLpNorm_eq_lintegral_rpow_enorm_toReal two_ne_zero ENNReal.ofNat_ne_top]
+  simp only [ENNReal.toReal_ofNat, one_div, ENNReal.rpow_two]
+  rw [lintegral_sq_nat_geometricMeasure' hp_pos hp_lt_one]
+  exact ENNReal.rpow_lt_top_of_nonneg (by norm_num) ENNReal.ofReal_ne_top
+
+end Moments
+
+section MeanVariance
+
+@[simp]
+theorem geometricMeasure'_mean (hp_pos : 0 < p) (hp_lt_one : p < 1) :
+    ∫ n : ℕ, (n : ℝ) ∂geometricMeasure' p hp_pos hp_lt_one.le = (1 - p) / p := by
+  rw [integral_geometricMeasure']
+  simp only [smul_eq_mul]
+  exact (hasSum_geometric_mul_nat hp_pos hp_lt_one).tsum_eq
+
+@[simp]
+theorem geometricMeasure'_moment_two (hp_pos : 0 < p) (hp_lt_one : p < 1) :
+    ∫ n : ℕ, (n : ℝ) ^ 2 ∂geometricMeasure' p hp_pos hp_lt_one.le =
+    2 * (1 - p) ^ 2 / p ^ 2 + (1 - p) / p := by
+  rw [integral_geometricMeasure']
+  simp only [smul_eq_mul]
+  exact (hasSum_geometricMeasure'_sq hp_pos hp_lt_one).tsum_eq
+
+@[simp]
+theorem geometricMeasure'_variance (hp_pos : 0 < p) (hp_lt_one : p < 1) :
+    Var[fun n : ℕ ↦ (n : ℝ); geometricMeasure' p hp_pos hp_lt_one.le] =
     (1 - p) / p ^ 2 := by
-  have hp_le_one := le_of_lt hp_lt_one
-  have hpdf : ∀ a : ℕ, ((geometricPMF hp_pos hp_le_one) a).toReal = geometricPMFReal p a :=
-    fun a => ENNReal.toReal_ofReal (geometricPMFReal_nonneg hp_pos hp_le_one)
-  set μ := (1 - p) / p with hμ
-  have hnn : ∀ a : ℕ, 0 ≤ geometricPMFReal p a * ((a : ℝ) - μ) ^ 2 :=
-    fun a => mul_nonneg (geometricPMFReal_nonneg hp_pos hp_le_one) (sq_nonneg _)
-  have key : HasSum (fun a : ℕ => geometricPMFReal p a * ((a : ℝ) - μ) ^ 2)
-      ((1 - p) / p ^ 2) := by
-    have h1 := geometricPMFRealSum hp_pos hp_le_one
-    have h2 := hasSum_geometric_mul_nat hp_pos hp_lt_one
-    have hA' : HasSum (fun a : ℕ => geometricPMFReal p a * (a : ℝ) ^ 2)
-        (2 * (1 - p) ^ 2 / p ^ 2 + (1 - p) / p) :=
-      ((hasSum_geometric_factorial_moment2 hp_pos hp_lt_one).add h2).congr_fun (fun a => by ring)
-    have hB : HasSum (fun a : ℕ => geometricPMFReal p a * (2 * (a : ℝ) * μ))
-        (2 * μ * μ) := by
-      convert h2.mul_right (2 * μ) using 1 <;> [ext a; skip] <;> ring
-    have hC : HasSum (fun a : ℕ => geometricPMFReal p a * μ ^ 2) (μ ^ 2) := by
-      convert h1.mul_right (μ ^ 2) using 1; ring
-    have hcomb := (hA'.sub hB).add hC
-    rw [show 2 * (1 - p) ^ 2 / p ^ 2 + (1 - p) / p - 2 * μ * μ + μ ^ 2 =
-        (1 - p) / p ^ 2 from by simp only [hμ]; field_simp; ring] at hcomb
-    exact hcomb.congr_fun (fun a => by ring)
-  have hint : Integrable (fun n : ℕ => ((n : ℝ) - μ) ^ 2)
-      (geometricPMF hp_pos hp_le_one).toMeasure := by
-    refine ⟨by fun_prop, ?_⟩
-    rw [hasFiniteIntegral_iff_enorm, lintegral_countable']
-    simp_rw [PMF.toMeasure_apply_singleton _ _ (measurableSet_singleton _), enorm_eq_nnnorm]
-    calc ∑' a, ↑‖((a : ℝ) - μ) ^ 2‖₊ * (geometricPMF hp_pos hp_le_one) a
-        = ∑' a, ENNReal.ofReal (geometricPMFReal p a * ((a : ℝ) - μ) ^ 2) :=
-          tsum_congr fun a => by
-            rw [show (geometricPMF hp_pos hp_le_one) a =
-                  ENNReal.ofReal (geometricPMFReal p a) from rfl,
-                Real.nnnorm_of_nonneg (sq_nonneg _),
-                ENNReal.ofReal_eq_coe_nnreal (geometricPMFReal_nonneg hp_pos hp_le_one),
-                ENNReal.ofReal_eq_coe_nnreal (hnn a), ← ENNReal.coe_mul]
-            congr 1; ext; simp [mul_comm]
-      _ = ENNReal.ofReal (∑' a, geometricPMFReal p a * ((a : ℝ) - μ) ^ 2) :=
-          (ENNReal.ofReal_tsum_of_nonneg hnn key.summable).symm
-      _ < ∞ := by rw [key.tsum_eq]; exact ENNReal.ofReal_lt_top
-  rw [geometricMeasure, PMF.integral_eq_tsum _ _ hint]
-  simp_rw [hpdf, smul_eq_mul, key.tsum_eq]
+  rw [variance_eq_sub (memLp_two_nat_geometricMeasure' hp_pos hp_lt_one)]
+  simp only [Pi.pow_apply]
+  rw [geometricMeasure'_moment_two hp_pos hp_lt_one, geometricMeasure'_mean hp_pos hp_lt_one]
+  field_simp
+  ring
 
 end MeanVariance
 
