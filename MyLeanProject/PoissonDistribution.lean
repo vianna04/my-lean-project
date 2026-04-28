@@ -8,6 +8,9 @@ module
 public import Mathlib.MeasureTheory.Integral.Bochner.Basic
 public import Mathlib.Probability.ProbabilityMassFunction.Basic
 public import Mathlib.Probability.Moments.Variance
+public import Mathlib.MeasureTheory.Measure.CharacteristicFunction.Basic
+public import Mathlib.Probability.HasLaw
+import Mathlib.Analysis.Complex.Basic
 
 import Mathlib.Analysis.SpecialFunctions.Exponential
 import Mathlib.MeasureTheory.Integral.Bochner.SumMeasure
@@ -151,15 +154,70 @@ lemma stronglyMeasurable_poissonPMFReal (r : ℝ≥0) : StronglyMeasurable (pois
 
 end PoissonPMF
 
+section Convolution
+
+instance : FiniteDimensional ℝ ℂ := by
+  apply Module.Finite.of_basis Complex.basisOneI
+
+/-- The Poisson measure on `ℝ`, obtained by pushing `poissonMeasure r` forward along `Nat.cast`. -/
+noncomputable def poissonMeasureReal (r : ℝ≥0) : Measure ℝ :=
+  (poissonMeasure r).map (Nat.cast : ℕ → ℝ)
+
+instance isProbabilityMeasure_poissonMeasureReal (r : ℝ≥0) :
+    IsProbabilityMeasure (poissonMeasureReal r) :=
+  Measure.isProbabilityMeasure_map (measurable_of_countable _).aemeasurable
+
+lemma poissonMeasureReal_charFun (r : ℝ≥0) (t : ℝ) :
+    charFun (poissonMeasureReal r) t =
+    Complex.exp (r * (Complex.exp (t * Complex.I) - 1)) := by
+  rw [charFun_apply, poissonMeasureReal,
+      integral_map (measurable_of_countable _).aemeasurable (by fun_prop),
+      integral_poissonMeasure r]
+  simp_rw [show ∀ (n : ℕ), inner ℝ (n : ℝ) t = ↑n * t from
+             fun n => by change t * n = n * t; ring]
+  change ∑' n, ((rexp (-r) * r ^ n / n ! : ℝ) : ℂ) *
+        Complex.exp (↑(n * t) * Complex.I) = _
+  have h_term_eq (n : ℕ) :
+      ↑(rexp (-r) * r ^ n / n !) * Complex.exp (↑(n * t) * Complex.I) =
+      ↑(rexp (-r)) * ((r * Complex.exp (t * Complex.I)) ^ n / n !) := by
+    push_cast; rw [mul_pow, ← Complex.exp_nat_mul]; ring_nf
+  simp_rw [h_term_eq, tsum_mul_left, (NormedSpace.expSeries_div_hasSum_exp
+            (r * Complex.exp (t * Complex.I))).tsum_eq]
+  rw [Complex.exp_eq_exp_ℂ, Complex.ofReal_exp, Complex.exp_eq_exp_ℂ, ← NormedSpace.exp_add]
+  congr 1; push_cast; ring
+
+theorem poissonMeasureReal_conv_poissonMeasureReal (r₁ r₂ : ℝ≥0) :
+    poissonMeasureReal r₁ ∗ poissonMeasureReal r₂ = poissonMeasureReal (r₁ + r₂) := by
+  apply Measure.ext_of_charFun
+  ext t
+  simp only [charFun_conv, poissonMeasureReal_charFun, ← Complex.exp_add]
+  congr 1; push_cast; ring
+
+theorem poissonMeasure_conv_poissonMeasure (r₁ r₂ : ℝ≥0) :
+    poissonMeasure r₁ ∗ poissonMeasure r₂ = poissonMeasure (r₁ + r₂) := by
+  apply (MeasurableEmbedding.natCast (α := ℝ)).map_injective
+  rw [← Nat.coe_castAddMonoidHom, Measure.map_conv_addMonoidHom _ (by fun_prop)]
+  exact poissonMeasureReal_conv_poissonMeasureReal _ _
+
+theorem IndepFun.hasLaw_add_poissonMeasure {Ω : Type*} {mΩ : MeasurableSpace Ω}
+    {P : Measure Ω} {r₁ r₂ : ℝ≥0} {X Y : Ω → ℕ}
+    (hXY : IndepFun X Y P) (hX : HasLaw X (poissonMeasure r₁) P)
+    (hY : HasLaw Y (poissonMeasure r₂) P) :
+    HasLaw (X + Y) (poissonMeasure (r₁ + r₂)) P := by
+  rw [← poissonMeasure_conv_poissonMeasure]
+  exact hXY.hasLaw_add hX hY
+
+end Convolution
+
 section Moments
 
 /-- The weighted sum for the mean of the Poisson distribution. -/
 lemma hasSum_poissonMeasure_nat (r : ℝ≥0) :
-    HasSum (fun a : ℕ => rexp (-(r:ℝ)) * (r:ℝ) ^ a / (a !) * (a : ℝ)) (r : ℝ) := by
-  have h := (hasSum_one_poissonMeasure r).mul_left (r : ℝ)
-  simp_rw [mul_one] at h
-  set f := fun a : ℕ => rexp (-(r:ℝ)) * (r:ℝ) ^ a / (a !) * (a : ℝ)
-  have hshift : HasSum (fun n : ℕ => f (n + 1)) (r : ℝ) := by
+    HasSum (fun n => rexp (-r) * r ^ n / n ! * n ) (r) := by
+  set f := fun n  => rexp (-r) * r ^ n / n ! * n
+  have hshift : HasSum (fun n => f (n + 1)) (r) := by
+    have h := (hasSum_one_poissonMeasure r).mul_left (r : ℝ)
+    simp_rw [mul_one] at h
     refine h.congr_fun fun n => ?_
     simp only [f, Nat.factorial_succ, Nat.cast_mul, pow_succ]
     push_cast; field_simp
@@ -168,9 +226,9 @@ lemma hasSum_poissonMeasure_nat (r : ℝ≥0) :
 
 /-- The weighted sum for the descending factorial moment of order 2. -/
 lemma hasSum_poissonMeasure_descFactorial_two (r : ℝ≥0) :
-    HasSum (fun a : ℕ => rexp (-(r:ℝ)) * (r:ℝ) ^ a / a ! * ((a : ℝ) * ((a : ℝ) - 1))) (r ^ 2) := by
-  set f := fun a : ℕ => rexp (-(r:ℝ)) * (r:ℝ) ^ a / a ! * ((a : ℝ) * ((a : ℝ) - 1))
-  have hshift : HasSum (fun n : ℕ => f (n + 2)) ((r : ℝ) ^ 2) := by
+    HasSum (fun n : ℕ => rexp (-r) * r ^ n / n ! * (n * (n - 1))) (r ^ 2) := by
+  set f := fun n : ℕ => rexp (-r) * r ^ n / n ! * (n * (n - 1))
+  have hshift : HasSum (fun n : ℕ => f (n + 2)) (r ^ 2) := by
     have h := (hasSum_one_poissonMeasure r).mul_left ((r : ℝ) ^ 2)
     simp_rw [mul_one] at h
     refine h.congr_fun fun n => ?_
@@ -182,31 +240,27 @@ lemma hasSum_poissonMeasure_descFactorial_two (r : ℝ≥0) :
 
 /-- The weighted sum for the second moment of the Poisson distribution. -/
 lemma hasSum_poissonMeasure_sq (r : ℝ≥0) :
-    HasSum (fun n : ℕ ↦ rexp (-(r : ℝ)) * (r : ℝ) ^ n / (n)! * (n : ℝ) ^ 2)
-    ((r : ℝ) ^ 2 + (r : ℝ)) := by
+    HasSum (fun n : ℕ ↦ rexp (-r) * r ^ n / n ! * n ^ 2)
+    (r ^ 2 + r) := by
   have h1 := hasSum_poissonMeasure_nat r
   have h2 := hasSum_poissonMeasure_descFactorial_two r
   convert h2.add h1 using 1
   ext n; ring
 
 lemma lintegral_sq_nat_poissonMeasure (r : ℝ≥0) :
-    ∫⁻ n, ‖(n : ℝ)‖ₑ ^ 2 ∂poissonMeasure r = ENNReal.ofReal ((r : ℝ) ^ 2 + (r : ℝ)) := by
-  have hint : Integrable (fun n : ℕ ↦ (n : ℝ) ^ 2) (poissonMeasure r) := by
-    rw [integrable_poissonMeasure_iff]
-    have heq : (fun n : ℕ ↦ rexp (-↑r) * ↑r ^ n / (n !) * ‖(n : ℝ) ^ 2‖) =
-        (fun n : ℕ ↦ rexp (-↑r) * ↑r ^ n / (n !) * (n : ℝ) ^ 2) := by
-      ext n
-      congr 1
-      rw [Real.norm_eq_abs, abs_of_nonneg (sq_nonneg _)]
-    rw [heq]
-    exact (hasSum_poissonMeasure_sq r).summable
-  have h : ∀ n : ℕ, ‖(n : ℝ)‖ₑ ^ 2 = ENNReal.ofReal ((n : ℝ) ^ 2) := fun n ↦ by
+    ∫⁻ n, ‖(n : ℝ)‖ₑ ^ 2 ∂poissonMeasure r = ENNReal.ofReal (r ^ 2 + r) := by
+  have h : ∀ n : ℕ, ‖(n : ℝ)‖ₑ ^ 2 = ENNReal.ofReal (n ^ 2) := fun n ↦ by
     rw [← enorm_pow, Real.enorm_of_nonneg (sq_nonneg _)]
   simp_rw [h]
+  have hint : Integrable (fun n : ℕ ↦ (n : ℝ) ^ 2) (poissonMeasure r) := by
+    rw [integrable_poissonMeasure_iff]
+    have heq : (fun n : ℕ ↦ rexp (-r) * r ^ n / (n !) * ‖(n : ℝ) ^ 2‖) =
+        (fun n : ℕ ↦ rexp (-r) * r ^ n / (n !) * n ^ 2) := by
+      ext n; congr 1; rw [Real.norm_eq_abs, abs_of_nonneg (sq_nonneg _)]
+    rw [heq]
+    exact (hasSum_poissonMeasure_sq r).summable
   rw [← ofReal_integral_eq_lintegral_ofReal hint (ae_of_all _ (fun _ ↦ sq_nonneg _))]
-  congr 1
-  rw [integral_poissonMeasure]
-  simp only [smul_eq_mul]
+  congr 1; rw [integral_poissonMeasure]
   exact (hasSum_poissonMeasure_sq r).tsum_eq
 
 lemma memLp_two_nat_poissonMeasure (r : ℝ≥0) :
@@ -225,14 +279,12 @@ section MeanVariance
 theorem poissonMeasure_mean (r : ℝ≥0) :
     ∫ n : ℕ, (n : ℝ) ∂poissonMeasure r = r := by
   rw [integral_poissonMeasure]
-  simp only [smul_eq_mul]
   exact (hasSum_poissonMeasure_nat r).tsum_eq
 
 @[simp]
 theorem poissonMeasure_moment_two (r : ℝ≥0) :
-    ∫ n : ℕ, (n : ℝ) ^ 2 ∂poissonMeasure r = (r : ℝ) ^ 2 + (r : ℝ) := by
+    ∫ n : ℕ, (n : ℝ) ^ 2 ∂poissonMeasure r = r ^ 2 + r := by
   rw [integral_poissonMeasure]
-  simp only [smul_eq_mul]
   exact (hasSum_poissonMeasure_sq r).tsum_eq
 
 @[simp]
