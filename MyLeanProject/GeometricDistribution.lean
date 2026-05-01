@@ -136,7 +136,8 @@ lemma hasSum_geometricMeasure_nat (hp_pos : 0 < p) (hp_lt_one : p < 1) :
 
 lemma hasSum_geometricMeasure_descFactorial_two (hp_pos : 0 < p) (hp_lt_one : p < 1) :
     HasSum (fun n => geometricPMFReal p n * (n * (n - 1))) (2 * (1 - p) ^ 2 / p ^ 2) := by
-  set f := fun n : ℕ => geometricPMFReal p n * (n * (n - 1))
+  simp only [geometricPMFReal]
+  set f := fun n : ℕ => (1 - p) ^ n * p * (n * (n - 1))
   have hshift : HasSum (fun n : ℕ => f (n + 2)) (2 * (1 - p) ^ 2 / p ^ 2) := by
     have hchoose := hasSum_choose_mul_geometric_of_norm_lt_one 2
       (by rw [Real.norm_of_nonneg (sub_nonneg.mpr hp_lt_one.le)]; linarith)
@@ -146,9 +147,9 @@ lemma hasSum_geometricMeasure_descFactorial_two (hp_pos : 0 < p) (hp_lt_one : p 
       rw [Nat.choose_two_right, Nat.cast_div (by rw [mul_comm]; exact Nat.two_dvd_mul_add_one (n + 1)) (by norm_num)]
       push_cast; ring
     convert (hconv.mul_left ((1 - p) ^ 2 * p)) using 1
-    ext n; simp only [f, geometricPMFReal]; push_cast; ring; field_simp
+    ext n; simp[f]; ring; field_simp
   simp only [hasSum_nat_add_iff, Finset.sum_range_succ, Finset.sum_range_zero, add_zero,
-             show f 0 = 0 by simp [f, geometricPMFReal], show f 1 = 0 by simp [f, geometricPMFReal]] at hshift
+             show f 0 = 0 by simp [f], show f 1 = 0 by simp [f]] at hshift
   exact hshift
 
 lemma hasSum_geometricMeasure_sq (hp_pos : 0 < p) (hp_lt_one : p < 1) :
