@@ -182,7 +182,7 @@ lemma deriv_rpow_div_sub_zero (ha : 0 < a) (hr : 0 < r) :
   rw [(hasDerivAt_rpow_div_sub ha hr hr).deriv]; simp only [sub_zero]; field_simp;
   exact (rpow_add_one hr.ne' a).symm
 
-lemma hasDerivAt_two_rpow_div_sub (ha : 0 < a) (_hr : 0 < r) {t : ℝ} (ht : t < r) :
+lemma hasDerivAt2_rpow_div_sub (ha : 0 < a) (_hr : 0 < r) {t : ℝ} (ht : t < r) :
     HasDerivAt (fun t => a * r ^ a / (r - t) ^ (a + 1)) (a * (a + 1) * r ^ a / (r - t) ^ (a + 2)) t := by
   have hrt_pos : 0 < r - t := sub_pos.mpr ht
   have hd : HasDerivAt (fun t => r - t) (-1) t := by
@@ -194,12 +194,12 @@ lemma hasDerivAt_two_rpow_div_sub (ha : 0 < a) (_hr : 0 < r) {t : ℝ} (ht : t <
   have h_const := (hasDerivAt_const t (a * r ^ a)).mul h_inv
   convert h_const using 1; field_simp; ring
 
-lemma iteratedDeriv_two_rpow_div_sub_zero (ha : 0 < a) (hr : 0 < r) :
+lemma deriv2_rpow_div_sub_zero (ha : 0 < a) (hr : 0 < r) :
     iteratedDeriv 2 (fun t => (r / (r - t)) ^ a) 0 = a * (a + 1) / r ^ 2 := by
   rw [iteratedDeriv_succ, iteratedDeriv_one]
   have h_eq : deriv (fun t => (r / (r - t)) ^ a) =ᶠ[𝓝 0] fun t => a * r ^ a / (r - t) ^ (a + 1) :=
     eventually_of_mem (Iio_mem_nhds hr) (fun t ht => (hasDerivAt_rpow_div_sub ha hr ht).deriv)
-  rw [h_eq.deriv_eq, (hasDerivAt_two_rpow_div_sub ha hr hr).deriv, sub_zero]
+  rw [h_eq.deriv_eq, (hasDerivAt2_rpow_div_sub ha hr hr).deriv, sub_zero]
   field_simp; rw [rpow_add hr]; norm_cast
 
 end RPowDivSub
@@ -242,27 +242,25 @@ lemma mgf_id_gammaMeasure_eventually (ha : 0 < a) (hr : 0 < r) :
 
 @[simp]
 theorem gammaMeasure_mean (ha : 0 < a) (hr : 0 < r) :
-    ∫ x, x ∂gammaMeasure a r = a / r := by
-  change ∫ x, id x ∂gammaMeasure a r = a / r
+    ∫ x, id x ∂gammaMeasure a r = a / r := by
   rw [← deriv_mgf_zero (gammaMeasure_zero_mem_interior_integrableExpSet ha hr),
     Filter.EventuallyEq.deriv_eq (mgf_id_gammaMeasure_eventually ha hr), deriv_rpow_div_sub_zero ha hr]
 
 @[simp]
 theorem gammaMeasure_moment_two (ha : 0 < a) (hr : 0 < r) :
-    ∫ x, x ^ 2 ∂gammaMeasure a r = a * (a + 1) / r ^ 2 := by
+    ∫ x, (id ^ 2) x ∂gammaMeasure a r = a * (a + 1) / r ^ 2 := by
   have h := iteratedDeriv_mgf_zero (gammaMeasure_zero_mem_interior_integrableExpSet ha hr) (n := 2)
-  simp only [id_eq, Pi.pow_apply] at h
   rw [← h, Filter.EventuallyEq.iteratedDeriv_eq (n := 2) (mgf_id_gammaMeasure_eventually ha hr),
-      iteratedDeriv_two_rpow_div_sub_zero ha hr]
+      deriv2_rpow_div_sub_zero ha hr]
 
 /-- The variance of the Gamma distribution with shape `a` and rate `r` is `a / r ^ 2`. -/
 @[simp]
 theorem gammaMeasure_variance (ha : 0 < a) (hr : 0 < r) :
     Var[id; gammaMeasure a r] = a / r ^ 2 := by
   have hprob : IsProbabilityMeasure (gammaMeasure a r) := isProbabilityMeasure_gammaMeasure ha hr
-  rw [variance_eq_sub (memLp_of_mem_interior_integrableExpSet (gammaMeasure_zero_mem_interior_integrableExpSet ha hr) (p := 2))]
-  simp only [id_eq, Pi.pow_apply, gammaMeasure_mean ha hr]
-  rw [gammaMeasure_moment_two ha hr]; field_simp; ring
+  rw [variance_eq_sub (memLp_of_mem_interior_integrableExpSet (gammaMeasure_zero_mem_interior_integrableExpSet ha hr) (p := 2)),
+    gammaMeasure_moment_two ha hr, gammaMeasure_mean ha hr]
+  ring
 
 end MeanVariance
 
