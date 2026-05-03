@@ -159,145 +159,68 @@ variable {α β : ℝ}
 
 lemma beta_ratio_succ_left (hα : 0 < α) (hβ : 0 < β) :
     beta (α + 1) β / beta α β = α / (α + β) := by
-  simp only [beta]
-  rw [Real.Gamma_add_one hα.ne']
-  have hab : α + 1 + β = α + β + 1 := by ring
-  rw [hab, Real.Gamma_add_one (add_pos hα hβ).ne']
-  field_simp
+  rw [beta, beta, Real.Gamma_add_one hα.ne']; field_simp;
+  rw [show α + 1 + β = α + β + 1 from by ring, ← Real.Gamma_add_one (add_pos hα hβ).ne']
 
 lemma beta_ratio_succ_left_two (hα : 0 < α) (hβ : 0 < β) :
     beta (α + 2) β / beta α β = α * (α + 1) / ((α + β) * (α + β + 1)) := by
-  have hb1 : beta (α + 1) β ≠ 0 := (beta_pos (by linarith) hβ).ne'
-  rw [show (α + 2 : ℝ) = (α + 1) + 1 from by ring]
-  rw [← div_mul_div_cancel₀ hb1 (a := beta ((α + 1) + 1) β) (c := beta α β),
+  have hb : beta (α + 1) β ≠ 0 := (beta_pos (by linarith) hβ).ne'
+  rw [show α + 2 = (α + 1) + 1 from by ring,
+    ← div_mul_div_cancel₀ hb (a := beta ((α + 1) + 1) β) (c := beta α β),
     beta_ratio_succ_left (by linarith) hβ, beta_ratio_succ_left hα hβ,
     show α + 1 + β = α + β + 1 from by ring]
   field_simp;
 
-lemma betaMeasure_integrable_id (hα : 0 < α) (hβ : 0 < β) :
-    Integrable (fun x => x) (betaMeasure α β) := by
+lemma integral_rpow_mul_betaPDFReal (hα : 0 < α) (hβ : 0 < β) (n : ℕ) (hn : 0 < n) :
+    ∫ x, x ^ n * betaPDFReal α β x = beta (α + n) β / beta α β := by
+  have hkey x : x ^ n * betaPDFReal α β x = (beta (α + n) β / beta α β) * betaPDFReal (α + n) β x := by
+    simp only [betaPDFReal, beta]; split_ifs with h
+    rw [show α + n - 1 = (α - 1) + n from by ring, Real.rpow_add h.1, Real.rpow_natCast]; field_simp; simp
+  rw [integral_congr_ae (ae_of_all _ hkey), integral_const_mul,
+      integral_eq_lintegral_of_nonneg_ae (ae_of_all _ (fun x => betaPDFReal_nonneg (by linarith) hβ))
+        (measurable_betaPDFReal (α + n) β).aestronglyMeasurable]
+  have h_eq : (∫⁻ x, ENNReal.ofReal (betaPDFReal (α + n) β x)) = ∫⁻ x, betaPDF (α + n) β x :=
+    lintegral_congr fun _ => rfl
+  rw [h_eq, lintegral_betaPDF_eq_one (by linarith) hβ, ENNReal.toReal_one, mul_one]
+
+lemma memLp_two_id_betaMeasure (hα : 0 < α) (hβ : 0 < β) :
+    MemLp id 2 (betaMeasure α β) := by
   have hprob := isProbabilityMeasure_betaMeasure hα hβ
-  refine ⟨measurable_id.aestronglyMeasurable, ?_⟩
-  rw [hasFiniteIntegral_iff_enorm]
-  have hmeas : Measurable (fun x => ENNReal.ofReal (betaPDFReal α β x)) :=
-    (measurable_betaPDFReal α β).ennreal_ofReal
-  calc ∫⁻ x, ‖x‖₊ ∂betaMeasure α β
-      ≤ ∫⁻ _, 1 ∂betaMeasure α β := by
-        apply lintegral_mono_ae
-        show ∀ᵐ x ∂volume.withDensity (fun x => ENNReal.ofReal (betaPDFReal α β x)),
-          (‖x‖₊ : ℝ≥0∞) ≤ 1
-        rw [ae_withDensity_iff hmeas]
-        apply ae_of_all; intro x hx
-        have hpos : 0 < betaPDFReal α β x := by
-          rcases (ENNReal.ofReal_eq_zero.not.mp hx) with h; push Not at h; exact h
-        simp only [betaPDFReal] at hpos; split_ifs at hpos with h
-        · rw [Real.nnnorm_of_nonneg h.1.le]; exact_mod_cast h.2.le
-        · linarith
-    _ = 1 := by simp [hprob.measure_univ]
-    _ < ⊤ := ENNReal.one_lt_top
+  apply MemLp.of_bound (C := 1) measurable_id.aestronglyMeasurable
+  change ∀ᵐ x ∂(volume.withDensity (fun x => ENNReal.ofReal (betaPDFReal α β x))), ‖id x‖ ≤ 1
+  rw [ae_withDensity_iff (measurable_betaPDFReal α β).ennreal_ofReal]
+  apply ae_of_all; intro x hx
+  simp only [betaPDFReal] at hx; split_ifs at hx with h
+  simp only [id, Real.norm_of_nonneg h.1.le]; exact h.2.le; simp at hx
 
-lemma betaMeasure_integrable_sq (hα : 0 < α) (hβ : 0 < β) :
-    Integrable (fun x => x ^ 2) (betaMeasure α β) := by
-  have hprob := isProbabilityMeasure_betaMeasure hα hβ
-  have hmeas : Measurable (fun x => ENNReal.ofReal (betaPDFReal α β x)) :=
-    (measurable_betaPDFReal α β).ennreal_ofReal
-  refine ⟨(measurable_id.pow_const 2).aestronglyMeasurable, ?_⟩
-  rw [hasFiniteIntegral_iff_enorm]
-  calc ∫⁻ x, ‖x ^ 2‖₊ ∂betaMeasure α β
-      ≤ ∫⁻ _, 1 ∂betaMeasure α β := by
-        apply lintegral_mono_ae
-        show ∀ᵐ x ∂volume.withDensity (fun x => ENNReal.ofReal (betaPDFReal α β x)),
-          (‖x ^ 2‖₊ : ℝ≥0∞) ≤ 1
-        rw [ae_withDensity_iff hmeas]
-        apply ae_of_all; intro x hx
-        have hpos : 0 < betaPDFReal α β x := by
-          rcases (ENNReal.ofReal_eq_zero.not.mp hx) with h; push Not at h; exact h
-        simp only [betaPDFReal] at hpos; split_ifs at hpos with h
-        · rw [Real.nnnorm_of_nonneg (sq_nonneg x)]; exact_mod_cast (by nlinarith [h.2] : x ^ 2 ≤ 1)
-        · linarith
-    _ = 1 := by simp [hprob.measure_univ]
-    _ < ⊤ := ENNReal.one_lt_top
-
-lemma integral_id_eq_beta_ratio (hα : 0 < α) (hβ : 0 < β) :
-    ∫ x : ℝ, x * betaPDFReal α β x = beta (α + 1) β / beta α β := by
-  have hα1 : (0 : ℝ) < α + 1 := by linarith
-  have hkey : ∀ x : ℝ, x * betaPDFReal α β x =
-      (beta (α + 1) β / beta α β) * betaPDFReal (α + 1) β x := by
-    intro x; simp only [betaPDFReal]; split_ifs with h
-    · rw [show x ^ (α + 1 - 1) = x ^ (α - 1) * x from by
-        rw [show α + 1 - 1 = α - 1 + 1 from by ring, Real.rpow_add h.1, Real.rpow_one]]
-      simp only [beta]; field_simp
-    · simp
-  rw [integral_congr_ae (ae_of_all _ hkey), integral_const_mul]
-  have : ∫ a, betaPDFReal (α + 1) β a = 1 := by
-    rw [integral_eq_lintegral_of_nonneg_ae
-      (ae_of_all _ (fun x => betaPDFReal_nonneg hα1 hβ))
-      (measurable_betaPDFReal (α + 1) β).aestronglyMeasurable]
-    have h := lintegral_betaPDF_eq_one hα1 hβ
-    simp only [betaPDF] at h
-    rw [h, ENNReal.toReal_one]
-  rw [this, mul_one]
-
-lemma integral_sq_eq_beta_ratio (hα : 0 < α) (hβ : 0 < β) :
-    ∫ x : ℝ, x ^ 2 * betaPDFReal α β x = beta (α + 2) β / beta α β := by
-  have hα2 : (0 : ℝ) < α + 2 := by linarith
-  have hkey : ∀ x : ℝ, x ^ 2 * betaPDFReal α β x =
-      (beta (α + 2) β / beta α β) * betaPDFReal (α + 2) β x := by
-    intro x; simp only [betaPDFReal]; split_ifs with h
-    · rw [show x ^ (α + 2 - 1) = x ^ (α - 1) * x ^ 2 from by
-        rw [show α + 2 - 1 = α - 1 + 2 from by ring, Real.rpow_add h.1]; simp]
-      simp only [beta]; field_simp
-    · simp
-  rw [integral_congr_ae (ae_of_all _ hkey), integral_const_mul]
-  have : ∫ a, betaPDFReal (α + 2) β a = 1 := by
-    rw [integral_eq_lintegral_of_nonneg_ae
-      (ae_of_all _ (fun x => betaPDFReal_nonneg hα2 hβ))
-      (measurable_betaPDFReal (α + 2) β).aestronglyMeasurable]
-    have h := lintegral_betaPDF_eq_one hα2 hβ
-    simp only [betaPDF] at h
-    rw [h, ENNReal.toReal_one]
-  rw [this, mul_one]
-
+@[simp]
 theorem betaMeasure_mean (hα : 0 < α) (hβ : 0 < β) :
-    ∫ x, x ∂betaMeasure α β = α / (α + β) := by
-  have hmeas : Measurable (betaPDF α β) := (measurable_betaPDFReal α β).ennreal_ofReal
-  have hlt_top : ∀ x, betaPDF α β x < ⊤ := fun _ => ENNReal.ofReal_lt_top
-  rw [betaMeasure, integral_withDensity_eq_integral_toReal_smul hmeas (ae_of_all _ hlt_top)]
-  simp only [smul_eq_mul]
-  simp_rw [betaPDF, ENNReal.toReal_ofReal (betaPDFReal_nonneg hα hβ)]
-  rw [show ∫ x, betaPDFReal α β x * x = ∫ x, x * betaPDFReal α β x from by
-    congr 1; ext x; ring]
-  rw [integral_id_eq_beta_ratio hα hβ, beta_ratio_succ_left hα hβ]
+    ∫ x, id x ∂betaMeasure α β = α / (α + β) := by
+  simp_rw [betaMeasure, integral_withDensity_eq_integral_toReal_smul
+    (show Measurable (betaPDF α β) from (measurable_betaPDFReal α β).ennreal_ofReal) (ae_of_all _ (fun _ => ENNReal.ofReal_lt_top)),
+    smul_eq_mul, id_def, betaPDF, ENNReal.toReal_ofReal (betaPDFReal_nonneg hα hβ)]
+  rw [show ∫ x, betaPDFReal α β x * x = ∫ x, x * betaPDFReal α β x from by congr 1; ext x; ring]
+  have h := integral_rpow_mul_betaPDFReal hα hβ 1 one_pos
+  simp only [pow_one, Nat.cast_one] at h
+  rw [h, beta_ratio_succ_left hα hβ]
 
+@[simp]
+theorem betaMeasure_moment_two (hα : 0 < α) (hβ : 0 < β) :
+    ∫ x, (id ^ 2) x ∂betaMeasure α β = α * (α + 1) / ((α + β) * (α + β + 1)) := by
+  simp_rw [Pi.pow_apply, id_def, betaMeasure, integral_withDensity_eq_integral_toReal_smul
+    (show Measurable (betaPDF α β) from (measurable_betaPDFReal α β).ennreal_ofReal) (ae_of_all _ (fun _ => ENNReal.ofReal_lt_top)),
+    smul_eq_mul, betaPDF, ENNReal.toReal_ofReal (betaPDFReal_nonneg hα hβ)]
+  rw [show ∫ x, betaPDFReal α β x * x ^ 2 = ∫ x, x ^ 2 * betaPDFReal α β x from by congr 1; ext x; ring]
+  have h := integral_rpow_mul_betaPDFReal hα hβ 2 two_pos
+  simp only [Nat.cast_ofNat] at h
+  rw [h, beta_ratio_succ_left_two hα hβ]
+
+@[simp]
 theorem betaMeasure_variance (hα : 0 < α) (hβ : 0 < β) :
-    Var[fun x => x; betaMeasure α β] = α * β / ((α + β) ^ 2 * (α + β + 1)) := by
+    variance id (betaMeasure α β) = α * β / ((α + β) ^ 2 * (α + β + 1)) := by
   have hprob := isProbabilityMeasure_betaMeasure hα hβ
-  rw [variance_eq_integral measurable_id'.aemeasurable, betaMeasure_mean hα hβ]
-  have hmeas : Measurable (betaPDF α β) := (measurable_betaPDFReal α β).ennreal_ofReal
-  have hlt_top : ∀ x, betaPDF α β x < ⊤ := fun _ => ENNReal.ofReal_lt_top
-  have h_moment2 : ∫ x, x ^ 2 ∂betaMeasure α β = α * (α + 1) / ((α + β) * (α + β + 1)) := by
-    rw [betaMeasure, integral_withDensity_eq_integral_toReal_smul hmeas (ae_of_all _ hlt_top)]
-    simp only [smul_eq_mul]
-    simp_rw [betaPDF, ENNReal.toReal_ofReal (betaPDFReal_nonneg hα hβ)]
-    rw [show ∫ x, betaPDFReal α β x * x ^ 2 = ∫ x, x ^ 2 * betaPDFReal α β x from by
-      congr 1; ext x; ring]
-    rw [integral_sq_eq_beta_ratio hα hβ, beta_ratio_succ_left_two hα hβ]
-  have hint1 : Integrable (fun ω => -2 * (α / (α + β)) * ω) (betaMeasure α β) :=
-    (betaMeasure_integrable_id hα hβ).const_mul _
-  have hint2 : Integrable (fun ω => -2 * (α / (α + β)) * ω + (α / (α + β)) ^ 2)
-      (betaMeasure α β) := hint1.add (integrable_const _)
-  calc ∫ ω, (ω - α / (α + β)) ^ 2 ∂betaMeasure α β
-      = ∫ ω, (ω ^ 2 + (-2 * (α / (α + β)) * ω + (α / (α + β)) ^ 2))
-          ∂betaMeasure α β := by congr 1; ext ω; ring
-    _ = ∫ ω, ω ^ 2 ∂betaMeasure α β +
-          ∫ ω, (-2 * (α / (α + β)) * ω + (α / (α + β)) ^ 2) ∂betaMeasure α β :=
-          integral_add (betaMeasure_integrable_sq hα hβ) hint2
-    _ = ∫ ω, ω ^ 2 ∂betaMeasure α β +
-          (-2 * (α / (α + β)) * ∫ ω, ω ∂betaMeasure α β + (α / (α + β)) ^ 2) := by
-          rw [integral_add hint1 (integrable_const _), integral_const_mul, integral_const,
-            show (betaMeasure α β).real Set.univ = 1 from by simp [measureReal_def], one_smul]
-    _ = α * β / ((α + β) ^ 2 * (α + β + 1)) := by
-          rw [h_moment2, betaMeasure_mean hα hβ]; field_simp; ring
+  rw [variance_eq_sub (memLp_two_id_betaMeasure hα hβ), betaMeasure_moment_two hα hβ, betaMeasure_mean hα hβ]
+  field_simp; ring
 
 end MeanVariance
 
